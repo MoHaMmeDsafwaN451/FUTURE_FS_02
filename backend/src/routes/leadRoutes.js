@@ -1,0 +1,13 @@
+import { Router } from 'express';
+import { createLead, deleteLead, getLead, leadStats, listLeads, updateLead } from '../controllers/leadController.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
+import { validateLead } from '../middleware/validationMiddleware.js';
+const router = Router();
+router.use(requireAuth);
+router.get('/stats', leadStats);
+router.get('/', listLeads);
+router.get('/:id', getLead);
+router.post('/', validateLead, createLead);
+router.put('/:id', validateLead, updateLead);
+router.delete('/:id', deleteLead);
+export default router;

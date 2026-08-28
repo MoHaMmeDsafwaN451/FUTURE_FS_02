@@ -1,0 +1,10 @@
+import 'dotenv/config';
+import bcrypt from 'bcrypt';
+import { connectDatabase } from '../config/db.js';
+import User from '../models/User.js';
+const { ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
+if (!ADMIN_NAME || !ADMIN_EMAIL || !ADMIN_PASSWORD) throw new Error('Set ADMIN_NAME, ADMIN_EMAIL, and ADMIN_PASSWORD in backend/.env first.');
+await connectDatabase();
+const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+await User.findOneAndUpdate({ email: ADMIN_EMAIL.toLowerCase() }, { name: ADMIN_NAME, email: ADMIN_EMAIL.toLowerCase(), passwordHash, role: 'admin' }, { upsert: true, new: true, setDefaultsOnInsert: true });
+console.log('Local admin created or updated.'); process.exit(0);
