@@ -2,7 +2,7 @@
   "name": "future-fs-02",
   "private": true,
   "scripts": {
-    "install:all": "npm --userconfig=.npmrc install --prefix backend && npm --userconfig=.npmrc install --prefix frontend",
+    "install:all": "npm --userconfig=.npmrc install && npm --userconfig=.npmrc install --prefix backend && npm --userconfig=.npmrc install --prefix frontend",
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "build": "npm run build --prefix frontend"
   },
