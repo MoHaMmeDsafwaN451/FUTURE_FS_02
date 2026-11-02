@@ -1058,14 +1058,19 @@ nowrap; }
 .status-chart-layout { display: grid; grid-template-columns: minmax(130px, .9fr) minmax(150px, 1.1fr); align-items: center; gap: 20px; min-height:
 195px; }
 .donut-chart {
-width: min(100%, 180px);
-aspect-ratio: 1;
-justify-self: center;
-display: grid;
-place-items: center;
-border-radius: 50%;
-background: conic-gradient(#2684ff 0 34%, #8b5cf6 34% 58%, #f97316 58% 82%, #10b981 82% 100%);
-position: relative;
+  width: min(100%, 180px);
+  aspect-ratio: 1;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(
+    #2684ff 0 34%,
+    #8b5cf6 34% 58%,
+    #f97316 58% 82%,
+    #10b981 82% 100%
+  );
+  position: relative;
 }
 .donut-chart::before { content: ""; position: absolute; inset: 24%; border-radius: 50%; background: #fff; }
 .donut-center { position: relative; z-index: 1; display: grid; gap: 3px; text-align: center; }
