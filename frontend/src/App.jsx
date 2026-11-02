@@ -405,18 +405,41 @@ function Dashboard() {
     return () => { active = false; };
   }, [auth.token]);
 
-  const total = Number(stats?.total || 0);
-  const newCount = Number(stats?.new || 0);
-  const contacted = Number(stats?.contacted || 0);
-  const converted = Number(stats?.converted || 0);
-  const qualified = leads.filter((lead) => lead.status === 'qualified').length;
+  // Use API statistics when available, with the loaded leads as a fallback.
+  const countStatus = (status) =>
+    Number.isFinite(Number(stats?.[status]))
+      ? Number(stats[status])
+      : leads.filter((lead) => lead.status === status).length;
+
+  const newCount = countStatus('new');
+  const contacted = countStatus('contacted');
+  const qualified = countStatus('qualified');
+  const converted = countStatus('converted');
+  const lost = countStatus('lost');
+  const total = Number.isFinite(Number(stats?.total))
+    ? Number(stats.total)
+    : leads.length;
+
   const recentLeads = [...leads].slice(0, 4);
   const statusCounts = [
     { label: 'New', count: newCount, color: '#2684ff' },
     { label: 'Contacted', count: contacted, color: '#8b5cf6' },
     { label: 'Qualified', count: qualified, color: '#f97316' },
     { label: 'Converted', count: converted, color: '#10b981' },
+    { label: 'Lost', count: lost, color: '#ef4444' },
   ];
+
+  // Build the donut chart from the actual status totals.
+  let cumulativePercent = 0;
+  const gradientStops = statusCounts.map((item) => {
+    const start = cumulativePercent;
+    cumulativePercent += total > 0 ? (item.count / total) * 100 : 0;
+    return `${item.color} ${start}% ${cumulativePercent}%`;
+  });
+  const donutGradient = total > 0
+    ? `conic-gradient(${gradientStops.join(', ')})`
+    : 'conic-gradient(#e5e7eb 0% 100%)';
+
   const bars = [1, 2, 3, 2, 3, 4, 3, 5, 6, 4, 6, 8];
 
   return (
@@ -471,9 +494,16 @@ function Dashboard() {
           <div className="status-chart-layout">
             <div
               className="donut-chart"
-              style={{ background: donutGradient }}>
-                <div className="donut-chart" style={{ '--new': newCount, '--contacted': contacted, '--qualified': qualified, '--converted': converted }}>
-              <div className="donut-center"><strong>{total}</strong><span>Total Leads</span></div>
+              style={{ background: donutGradient }}
+              role="img"
+              aria-label={`Lead status distribution: ${statusCounts
+                .map((item) => `${item.label} ${item.count}`)
+                .join(', ')}`}
+            >
+              <div className="donut-center">
+                <strong>{total}</strong>
+                <span>Total Leads</span>
+              </div>
             </div>
             <div className="chart-legend">
               {statusCounts.map((item) => (
