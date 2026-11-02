@@ -469,7 +469,10 @@ function Dashboard() {
             <span className="mini-period">{period}</span>
           </div>
           <div className="status-chart-layout">
-            <div className="donut-chart" style={{ '--new': newCount, '--contacted': contacted, '--qualified': qualified, '--converted': converted }}>
+            <div
+              className="donut-chart"
+              style={{ background: donutGradient }}>
+                <div className="donut-chart" style={{ '--new': newCount, '--contacted': contacted, '--qualified': qualified, '--converted': converted }}>
               <div className="donut-center"><strong>{total}</strong><span>Total Leads</span></div>
             </div>
             <div className="chart-legend">
