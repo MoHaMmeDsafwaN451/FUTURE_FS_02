@@ -38,7 +38,6 @@ import { useAuth } from './hooks/useAuth';
 import {
   createLead,
   getLeads,
-  getStats,
   removeLead,
   updateLead,
 } from './services/leadService';
@@ -52,6 +51,7 @@ const emptyLead = {
   status: 'new',
   notes: '',
   followUpDate: '',
+  budget: '',
 };
 
 const statuses = ['new', 'contacted', 'qualified', 'converted', 'lost'];
@@ -62,10 +62,17 @@ const pretty = (value) =>
 
 const formatDate = (value) =>
   value
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-        new Date(value),
-      )
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value))
     : '—';
+
+const formatMoney = (value) => {
+  const amount = Number(value);
+  return value !== '' && value !== null && value !== undefined && Number.isFinite(amount)
+    ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount)
+    : 'Not set';
+};
+
+const getLeadCreatedDate = (lead) => lead.createdAt || lead.created_at || lead.dateCreated || null;
 
 function Protected({ children }) {
   const { auth, loading } = useAuth();
@@ -386,41 +393,42 @@ function Shell({ children }) {
 
 function Dashboard() {
   const { auth } = useAuth();
-  const [stats, setStats] = useState(null);
   const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [period, setPeriod] = useState('This Month');
 
+  // Use the same leads endpoint as the Leads page. This avoids a second
+  // statistics request and prevents one failed endpoint from blanking the dashboard.
   useEffect(() => {
     let active = true;
-    Promise.all([getStats(auth.token), getLeads(auth.token)])
-      .then(([nextStats, nextLeads]) => {
+    setLoading(true);
+    getLeads(auth.token)
+      .then((result) => {
         if (!active) return;
-        setStats(nextStats);
-        setLeads(nextLeads);
+        setLeads(Array.isArray(result) ? result : result?.leads || []);
+        setError('');
       })
       .catch((err) => {
-        if (active) setError(err.message);
+        if (active) setError(err.message || 'Unable to load leads.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => { active = false; };
   }, [auth.token]);
 
-  // Use API statistics when available, with the loaded leads as a fallback.
-  const countStatus = (status) =>
-    Number.isFinite(Number(stats?.[status]))
-      ? Number(stats[status])
-      : leads.filter((lead) => lead.status === status).length;
-
+  const countStatus = (status) => leads.filter((lead) => lead.status === status).length;
   const newCount = countStatus('new');
   const contacted = countStatus('contacted');
   const qualified = countStatus('qualified');
   const converted = countStatus('converted');
   const lost = countStatus('lost');
-  const total = Number.isFinite(Number(stats?.total))
-    ? Number(stats.total)
-    : leads.length;
+  const total = leads.length;
+  const recentLeads = [...leads]
+    .sort((a, b) => new Date(getLeadCreatedDate(b) || 0) - new Date(getLeadCreatedDate(a) || 0))
+    .slice(0, 4);
 
-  const recentLeads = [...leads].slice(0, 4);
   const statusCounts = [
     { label: 'New', count: newCount, color: '#2684ff' },
     { label: 'Contacted', count: contacted, color: '#8b5cf6' },
@@ -429,7 +437,6 @@ function Dashboard() {
     { label: 'Lost', count: lost, color: '#ef4444' },
   ];
 
-  // Build the donut chart from the actual status totals.
   let cumulativePercent = 0;
   const gradientStops = statusCounts.map((item) => {
     const start = cumulativePercent;
@@ -440,7 +447,37 @@ function Dashboard() {
     ? `conic-gradient(${gradientStops.join(', ')})`
     : 'conic-gradient(#e5e7eb 0% 100%)';
 
-  const bars = [1, 2, 3, 2, 3, 4, 3, 5, 6, 4, 6, 8];
+  // Count real lead creation dates. No sample/demo values are drawn.
+  const now = new Date();
+  const selectedMonth = period === 'Last Month'
+    ? new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    : new Date(now.getFullYear(), now.getMonth(), 1);
+  const activityBuckets = period === 'This Year'
+    ? Array.from({ length: 12 }, (_, i) => ({
+        key: i,
+        label: new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(now.getFullYear(), i, 1)),
+        count: 0,
+      }))
+    : Array.from({ length: 5 }, (_, i) => ({ key: i, label: `Week ${i + 1}`, count: 0 }));
+  let activityDateCount = 0;
+  leads.forEach((lead) => {
+    const rawDate = getLeadCreatedDate(lead);
+    if (!rawDate) return;
+    const date = new Date(rawDate);
+    if (Number.isNaN(date.getTime())) return;
+    if (period === 'This Year') {
+      if (date.getFullYear() === now.getFullYear()) {
+        activityBuckets[date.getMonth()].count += 1;
+        activityDateCount += 1;
+      }
+    } else if (date.getFullYear() === selectedMonth.getFullYear() && date.getMonth() === selectedMonth.getMonth()) {
+      const week = Math.min(4, Math.floor((date.getDate() - 1) / 7));
+      activityBuckets[week].count += 1;
+      activityDateCount += 1;
+    }
+  });
+  const activityMax = Math.max(1, ...activityBuckets.map((bucket) => bucket.count));
+  const activityTicks = [activityMax, Math.ceil(activityMax * 0.66), Math.ceil(activityMax * 0.33), 0];
 
   return (
     <Shell>
@@ -465,22 +502,22 @@ function Dashboard() {
       <section className="analytics-stats">
         <article className="analytics-stat">
           <span className="analytics-stat-icon blue"><Users size={22} /></span>
-          <div><strong>{stats ? total : '—'}</strong><span>Total Leads</span></div>
+          <div><strong>{loading ? '…' : total}</strong><span>Total Leads</span></div>
           <small className="trend-up"><Activity size={14} /> Pipeline</small>
         </article>
         <article className="analytics-stat">
           <span className="analytics-stat-icon orange"><FileText size={22} /></span>
-          <div><strong>{stats ? newCount : '—'}</strong><span>New Leads</span></div>
+          <div><strong>{loading ? '…' : newCount}</strong><span>New Leads</span></div>
           <small className="trend-neutral">Needs review</small>
         </article>
         <article className="analytics-stat">
           <span className="analytics-stat-icon purple"><ContactRound size={22} /></span>
-          <div><strong>{stats ? contacted + qualified : '—'}</strong><span>Active Deals</span></div>
+          <div><strong>{loading ? '…' : contacted + qualified}</strong><span>Active Deals</span></div>
           <small className="trend-neutral">In progress</small>
         </article>
         <article className="analytics-stat">
           <span className="analytics-stat-icon green"><Trophy size={22} /></span>
-          <div><strong>{stats ? converted : '—'}</strong><span>Converted</span></div>
+          <div><strong>{loading ? '…' : converted}</strong><span>Converted</span></div>
           <small className="trend-up"><CheckCircle2 size={14} /> Won</small>
         </article>
       </section>
@@ -489,28 +526,18 @@ function Dashboard() {
         <article className="panel analytics-panel">
           <div className="panel-title analytics-panel-title">
             <div><h2>Lead Status</h2><p>Distribution of your leads by status.</p></div>
-            <span className="mini-period">{period}</span>
+            <span className="mini-period">All leads</span>
           </div>
           <div className="status-chart-layout">
-            <div
-              className="donut-chart"
-              style={{ background: donutGradient }}
-              role="img"
-              aria-label={`Lead status distribution: ${statusCounts
-                .map((item) => `${item.label} ${item.count}`)
-                .join(', ')}`}
-            >
-              <div className="donut-center">
-                <strong>{total}</strong>
-                <span>Total Leads</span>
-              </div>
+            <div className="donut-chart" style={{ background: donutGradient }} role="img" aria-label={`Lead status distribution: ${statusCounts.map((item) => `${item.label} ${item.count}`).join(', ')}`}>
+              <div className="donut-center"><strong>{loading ? '…' : total}</strong><span>Total Leads</span></div>
             </div>
             <div className="chart-legend">
               {statusCounts.map((item) => (
                 <div className="legend-row" key={item.label}>
                   <span className="legend-name"><i style={{ background: item.color }} />{item.label}</span>
-                  <strong>{item.count}</strong>
-                  <span>{total ? Math.round((item.count / total) * 100) : 0}%</span>
+                  <strong>{loading ? '—' : item.count}</strong>
+                  <span>{!loading && total ? Math.round((item.count / total) * 100) : 0}%</span>
                 </div>
               ))}
             </div>
@@ -519,16 +546,24 @@ function Dashboard() {
 
         <article className="panel analytics-panel">
           <div className="panel-title analytics-panel-title">
-            <div><h2>Lead Activity</h2><p>Illustrative activity trend for the selected period.</p></div>
+            <div><h2>Lead Activity</h2><p>New leads created during the selected period.</p></div>
             <span className="mini-period">{period}</span>
           </div>
-          <div className="activity-chart">
-            <div className="chart-y-labels"><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span></div>
-            <div className="bar-chart">
-              {bars.map((bar, index) => <div className="bar-column" key={index}><i style={{ height: `${bar * 11}%` }} /></div>)}
+          {activityDateCount ? (
+            <div className="activity-chart activity-chart-real">
+              <div className="chart-y-labels">{activityTicks.map((tick, index) => <span key={index}>{tick}</span>)}</div>
+              <div className="bar-chart">
+                {activityBuckets.map((bucket) => (
+                  <div className="bar-column" key={bucket.key} title={`${bucket.label}: ${bucket.count} leads`}>
+                    <i style={{ height: `${bucket.count ? Math.max(5, (bucket.count / activityMax) * 100) : 0}%` }} />
+                  </div>
+                ))}
+              </div>
+              <div className="chart-x-labels">{activityBuckets.map((bucket) => <span key={bucket.key}>{bucket.label}</span>)}</div>
             </div>
-            <div className="chart-x-labels"><span>Oct 1</span><span>Oct 5</span><span>Oct 10</span><span>Oct 15</span><span>Oct 20</span><span>Oct 25</span><span>Oct 31</span></div>
-          </div>
+          ) : (
+            <div className="chart-empty">{loading ? 'Loading activity…' : 'No lead creation dates are available for this period.'}</div>
+          )}
         </article>
       </section>
 
@@ -537,7 +572,7 @@ function Dashboard() {
           <div><h2><span className="heading-spark">✦</span> Recent / Important Leads</h2><p>Latest leads or those needing attention. Go to the Leads page to see and manage all leads.</p></div>
           <NavLink to="/leads">View all leads <ChevronRight size={16} /></NavLink>
         </div>
-        {recentLeads.length ? (
+        {loading ? <p className="empty">Loading your leads…</p> : recentLeads.length ? (
           <div className="recent-lead-cards">
             {recentLeads.map((lead, index) => (
               <article className={`recent-lead-card tone-${index % 4}`} key={lead._id}>
@@ -551,7 +586,7 @@ function Dashboard() {
                   <span><Phone size={14} /> {lead.phone || '—'}</span>
                 </div>
                 {lead.notes && <p className="recent-lead-note">“{lead.notes}”</p>}
-                <div className="recent-lead-bottom"><span><CircleDollarSign size={16} /> <b>—</b></span><NavLink to="/leads">Open lead</NavLink></div>
+                <div className="recent-lead-bottom"><span><CircleDollarSign size={16} /> <b>{formatMoney(lead.budget)}</b></span><NavLink to="/leads">Open lead</NavLink></div>
               </article>
             ))}
           </div>
@@ -571,6 +606,7 @@ function LeadTable({ leads, onEdit, onDelete, compact = false }) {
             <th>Source</th>
             <th>Status</th>
             <th>Follow-up</th>
+            <th>Budget</th>
             {!compact && <th>Actions</th>}
           </tr>
         </thead>
@@ -591,6 +627,7 @@ function LeadTable({ leads, onEdit, onDelete, compact = false }) {
                 </span>
               </td>
               <td>{formatDate(lead.followUpDate)}</td>
+              <td>{formatMoney(lead.budget)}</td>
               {!compact && (
                 <td className="actions">
                   <button
@@ -632,7 +669,7 @@ function LeadModal({ lead, onClose, onSave }) {
     setError('');
 
     try {
-      await onSave({ ...form, followUpDate: form.followUpDate || null });
+      await onSave({ ...form, followUpDate: form.followUpDate || null, budget: form.budget === '' || form.budget === null ? null : Number(form.budget) });
       onClose();
     } catch (err) {
       setError(err.message);
@@ -697,6 +734,21 @@ function LeadModal({ lead, onClose, onSave }) {
               value={form.company}
               onChange={(event) => change('company', event.target.value)}
             />
+          </label>
+
+          <label>
+            Budget / Expense (optional)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              name="budget"
+              placeholder="e.g. 25000"
+              value={form.budget ?? ''}
+              onChange={(event) => change('budget', event.target.value)}
+            />
+            <small className="field-hint">Leave blank if the amount is not known.</small>
           </label>
 
           <label>
@@ -916,6 +968,7 @@ function Leads() {
                         <span className="kanban-email">{lead.email}</span>
                         {lead.notes && <p className="kanban-note">{lead.notes}</p>}
                         <div className="kanban-card-meta"><span><CalendarDays size={14} />{formatDate(lead.followUpDate)}</span><span>{pretty(lead.source)}</span></div>
+                        {lead.budget !== null && lead.budget !== undefined && lead.budget !== '' && <div className="kanban-budget"><CircleDollarSign size={14} /> Budget: {formatMoney(lead.budget)}</div>}
                         <div className="kanban-card-actions"><button type="button" className="small-edit" onClick={() => setModal(lead)}>Edit</button><button type="button" className="small-delete" onClick={() => del(lead)}>Delete</button></div>
                       </article>
                     ))}
