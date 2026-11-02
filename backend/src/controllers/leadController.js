@@ -1,6 +1,28 @@
+
 import Lead from '../models/Lead.js';
 
 const validId = (id) => /^[a-f\d]{24}$/i.test(id);
+
+// Only accept fields that users are allowed to modify
+const allowedFields = [
+  'name',
+  'email',
+  'phone',
+  'company',
+  'source',
+  'status',
+  'notes',
+  'followUpDate',
+  'budget',
+  'expense'
+];
+
+const getLeadData = (body) =>
+  Object.fromEntries(
+    allowedFields
+      .filter((field) => body[field] !== undefined)
+      .map((field) => [field, body[field]])
+  );
 
 // Get only leads belonging to the logged-in user
 export async function listLeads(req, res, next) {
@@ -15,17 +37,21 @@ export async function listLeads(req, res, next) {
     if (source) filter.source = source;
 
     if (search) {
-      filter.$or = ['name', 'email', 'company'].map((field) => ({
-        [field]: {
-          $regex: search,
-          $options: 'i'
-        }
-      }));
+      filter.$or = ['name', 'email', 'company', 'notes'].map(
+        (field) => ({
+          [field]: {
+            $regex: search,
+            $options: 'i'
+          }
+        })
+      );
     }
 
-    res.json(
-      await Lead.find(filter).sort({ createdAt: -1 })
-    );
+    const leads = await Lead.find(filter).sort({
+      createdAt: -1
+    });
+
+    res.json(leads);
   } catch (error) {
     next(error);
   }
@@ -52,26 +78,26 @@ export async function getLead(req, res, next) {
     }
 
     res.json(lead);
-  } catch (e) {
-    next(e);
+  } catch (error) {
+    next(error);
   }
 }
 
-// Create a lead for the logged-in user
+// Create a lead
 export async function createLead(req, res, next) {
   try {
     const lead = await Lead.create({
-      ...req.body,
+      ...getLeadData(req.body),
       user: req.user._id
     });
 
     res.status(201).json(lead);
-  } catch (e) {
-    next(e);
+  } catch (error) {
+    next(error);
   }
 }
 
-// Update only a lead belonging to the logged-in user
+// Update a lead
 export async function updateLead(req, res, next) {
   try {
     if (!validId(req.params.id)) {
@@ -86,8 +112,7 @@ export async function updateLead(req, res, next) {
         user: req.user._id
       },
       {
-        ...req.body,
-        user: req.user._id
+        $set: getLeadData(req.body)
       },
       {
         new: true,
@@ -102,12 +127,12 @@ export async function updateLead(req, res, next) {
     }
 
     res.json(lead);
-  } catch (e) {
-    next(e);
+  } catch (error) {
+    next(error);
   }
 }
 
-// Delete only a lead belonging to the logged-in user
+// Delete a lead
 export async function deleteLead(req, res, next) {
   try {
     if (!validId(req.params.id)) {
@@ -128,12 +153,12 @@ export async function deleteLead(req, res, next) {
     }
 
     res.status(204).send();
-  } catch (e) {
-    next(e);
+  } catch (error) {
+    next(error);
   }
 }
 
-// Get statistics only for the logged-in user's leads
+// Get statistics for the logged-in user's leads
 export async function leadStats(req, res, next) {
   try {
     const rows = await Lead.aggregate([
@@ -153,19 +178,23 @@ export async function leadStats(req, res, next) {
     ]);
 
     const map = Object.fromEntries(
-      rows.map((r) => [r._id, r.count])
+      rows.map((row) => [row._id, row.count])
+    );
+
+    const total = rows.reduce(
+      (sum, row) => sum + row.count,
+      0
     );
 
     res.json({
-      total: rows.reduce(
-        (sum, r) => sum + r.count,
-        0
-      ),
+      total,
       new: map.new || 0,
       contacted: map.contacted || 0,
-      converted: map.converted || 0
+      qualified: map.qualified || 0,
+      converted: map.converted || 0,
+      lost: map.lost || 0
     });
-  } catch (e) {
-    next(e);
+  } catch (error) {
+    next(error);
   }
 }
