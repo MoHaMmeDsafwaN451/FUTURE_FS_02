@@ -749,18 +749,37 @@ function LeadModal({ lead, onClose, onSave }) {
           </label>
 
           <label>
-            Budget / Expense (optional)
+            Budget (₹)
             <input
               type="number"
               min="0"
               step="0.01"
               inputMode="decimal"
               name="budget"
-              placeholder="e.g. 25000"
+              placeholder="e.g. 50000"
               value={form.budget ?? ''}
               onChange={(event) => change('budget', event.target.value)}
             />
-            <small className="field-hint">Leave blank if the amount is not known.</small>
+            <small className="field-hint">
+              Expected budget from the lead.
+            </small>
+          </label>
+          
+          <label>
+            Expense (₹)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              name="expense"
+              placeholder="e.g. 10000"
+              value={form.expense ?? ''}
+              onChange={(event) => change('expense', event.target.value)}
+            />
+            <small className="field-hint">
+              Actual expense associated with this lead.
+            </small>
           </label>
 
           <label>
