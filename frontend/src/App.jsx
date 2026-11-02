@@ -670,7 +670,18 @@ function LeadModal({ lead, onClose, onSave }) {
     setError('');
 
     try {
-      await onSave({ ...form, followUpDate: form.followUpDate || null, budget: form.budget === '' || form.budget === null ? null : Number(form.budget) });
+      await onSave({
+        ...form,
+        followUpDate: form.followUpDate || null,
+        budget:
+          form.budget === '' || form.budget === null
+            ? null
+            : Number(form.budget),
+        expense:
+          form.expense === '' || form.expense === null
+            ? null
+            : Number(form.expense),
+      });
       onClose();
     } catch (err) {
       setError(err.message);
