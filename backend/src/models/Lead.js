@@ -70,6 +70,18 @@ const leadSchema = new mongoose.Schema({
     default: ''
   },
 
+  budget: {
+    type: Number,
+    min: 0,
+    default: null
+  },
+  
+  expense: {
+    type: Number,
+    min: 0,
+    default: null
+  },
+  
   followUpDate: {
     type: Date,
     default: null
