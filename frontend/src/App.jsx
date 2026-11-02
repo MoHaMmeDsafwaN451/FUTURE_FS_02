@@ -52,6 +52,7 @@ const emptyLead = {
   notes: '',
   followUpDate: '',
   budget: '',
+  expense: '',
 };
 
 const statuses = ['new', 'contacted', 'qualified', 'converted', 'lost'];
